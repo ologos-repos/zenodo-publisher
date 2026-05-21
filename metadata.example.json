@@ -1,0 +1,21 @@
+{
+  "metadata": {
+    "title": "Example Title",
+    "upload_type": "publication",
+    "publication_type": "preprint",
+    "description": "Short abstract or description for the Zenodo record.",
+    "creators": [
+      {
+        "name": "Familyname, Givenname"
+      }
+    ],
+    "keywords": [
+      "example",
+      "zenodo"
+    ],
+    "access_right": "open",
+    "license": "cc-by-4.0",
+    "version": "1.0",
+    "language": "eng"
+  }
+}
