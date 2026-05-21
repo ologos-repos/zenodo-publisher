@@ -75,6 +75,43 @@ def publish_deposition(api_base: str, token: str, deposition_id: int) -> dict[st
     return request("POST", f"{api_base}/deposit/depositions/{deposition_id}/actions/publish", token)
 
 
+def api_base_for(sandbox: bool) -> str:
+    return ZENODO_SANDBOX_API if sandbox else ZENODO_API
+
+
+def create_record(files: list[Path], metadata: dict[str, Any], sandbox: bool = False, publish: bool = False) -> dict[str, Any]:
+    token = require_token()
+    api_base = api_base_for(sandbox)
+    upload_paths = [path.resolve() for path in files]
+    for path in upload_paths:
+        if not path.exists():
+            raise ZenodoPublisherError(f"File not found: {path}")
+
+    deposition = create_deposition(api_base, token)
+    deposition_id = deposition["id"]
+    bucket_url = deposition["links"]["bucket"]
+    uploaded_files = []
+
+    for path in upload_paths:
+        uploaded_files.append(upload_file(bucket_url, token, path))
+
+    updated = update_metadata(api_base, token, deposition_id, metadata)
+    result = {
+        "deposition_id": deposition_id,
+        "draft_url": updated["links"].get("html"),
+        "published": False,
+        "uploaded_files": uploaded_files,
+    }
+
+    if publish:
+        published = publish_deposition(api_base, token, deposition_id)
+        result["published"] = True
+        result["record_url"] = published["links"].get("html")
+        result["record"] = published
+
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create a Zenodo draft deposition, upload files, and optionally publish.")
     parser.add_argument("files", nargs="+", type=Path, help="Files to upload")
@@ -85,32 +122,16 @@ def main() -> int:
     args = parser.parse_args()
 
     load_dotenv(args.env)
-    token = require_token()
-    api_base = ZENODO_SANDBOX_API if args.sandbox else ZENODO_API
     metadata = read_json(args.metadata)
-
-    upload_paths = [path.resolve() for path in args.files]
-    for path in upload_paths:
-        if not path.exists():
-            raise ZenodoPublisherError(f"File not found: {path}")
-
-    deposition = create_deposition(api_base, token)
-    deposition_id = deposition["id"]
-    bucket_url = deposition["links"]["bucket"]
-
-    for path in upload_paths:
-        upload_file(bucket_url, token, path)
-
-    updated = update_metadata(api_base, token, deposition_id, metadata)
+    result = create_record(args.files, metadata, args.sandbox, args.publish)
 
     print("Created Zenodo deposition.")
-    print(f"Deposition ID: {deposition_id}")
-    print(f"Draft URL: {updated['links'].get('html', 'Open your Zenodo uploads dashboard')}")
+    print(f"Deposition ID: {result['deposition_id']}")
+    print(f"Draft URL: {result.get('draft_url') or 'Open your Zenodo uploads dashboard'}")
 
-    if args.publish:
-        published = publish_deposition(api_base, token, deposition_id)
+    if result["published"]:
         print("Published deposition.")
-        print(f"Record URL: {published['links'].get('html', 'Open your Zenodo records dashboard')}")
+        print(f"Record URL: {result.get('record_url') or 'Open your Zenodo records dashboard'}")
     else:
         print("Draft only. Review in Zenodo before publishing.")
 
